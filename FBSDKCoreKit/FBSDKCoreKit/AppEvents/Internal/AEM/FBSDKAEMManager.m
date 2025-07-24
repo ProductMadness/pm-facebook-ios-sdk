@@ -104,11 +104,10 @@ static BOOL fbproxy_AppDelegateContinueUserActivity(id self, SEL _cmd, id applic
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
       @try  {
-        if (proxyEnabled) {
-          [self setupWithProxy];
-        } else {
-          [self setup];
-        }
+        // removing the `proxyEnabled` conditional check here and always running the proxy setup
+        // a bug was introduced on the sdk side which caused this condition to always return false
+        // and that was not intended. see https://github.com/facebook/facebook-ios-sdk/issues/2205
+        [self setupWithProxy];
       } @catch (NSException *exception) {
         // Disable Auto Setup and log event if exception happens
         [self.featureChecker disableFeature:FBSDKFeatureAEMAutoSetup];
