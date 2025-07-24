@@ -1,0 +1,117 @@
+name: Build-CoreKit-Dynamic
+
+on: [push, workflow_dispatch]
+
+env:
+  TAG: v17.0.1
+
+jobs:
+  corekit:
+    runs-on: macos-13      # Xcode 14.3 tool-chain
+
+    env:
+      BUILD_DIR: ${{ github.workspace }}/build   # one folder for all slices
+
+    steps:
+    - uses: actions/checkout@v4
+      with: { fetch-depth: 1 }
+
+    - name: Install XcodeGen
+      run: brew install xcodegen
+
+    - run: sudo xcode-select -s /Applications/Xcode_14.3.app
+    - run: ./generate-projects.sh --force-with-wrong-xcodegen
+
+    # ───────── Basics first ─────────
+    - name: Build FBSDKCoreKit_Basics-Dynamic (device + sim)
+      run: |
+        for SDK in iphoneos iphonesimulator; do
+          xcodebuild -workspace FacebookSDK.xcworkspace \
+                     -scheme   FBSDKCoreKit_Basics-Dynamic \
+                     -configuration Release \
+                     -sdk       $SDK \
+                     BUILD_DIR="${BUILD_DIR}" \
+                     BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+                     DEFINES_MODULE=YES \
+                     GCC_TREAT_WARNINGS_AS_ERRORS=NO \
+                     CLANG_WARN_UNGUARDED_AVAILABILITY_NEW=NO \
+                     CLANG_WARN_OBJC_AVAILABILITY=NO \
+                     clean build
+        done
+
+    # ───────── Umbrella device slice ─────────
+    - name: Build ALL kits (device)
+      run: |
+        xcodebuild -workspace FacebookSDK.xcworkspace \
+                   -scheme BuildAllKits-Dynamic \
+                   -configuration Release \
+                   -sdk iphoneos \
+                   IPHONEOS_DEPLOYMENT_TARGET=13.0 \
+                   BUILD_DIR="${BUILD_DIR}" \
+                   BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+                   GCC_TREAT_WARNINGS_AS_ERRORS=NO \
+                   CLANG_WARN_UNGUARDED_AVAILABILITY_NEW=NO \
+                   CLANG_WARN_OBJC_AVAILABILITY=NO \
+                   clean build
+
+    # ───────── Umbrella simulator slice ─────────
+    - name: Build ALL kits (simulator)
+      run: |
+        xcodebuild -workspace FacebookSDK.xcworkspace \
+                   -scheme BuildAllKits-Dynamic \
+                   -configuration Release \
+                   -sdk iphonesimulator \
+                   IPHONEOS_DEPLOYMENT_TARGET=13.0 \
+                   BUILD_DIR="${BUILD_DIR}" \
+                   BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+                   GCC_TREAT_WARNINGS_AS_ERRORS=NO \
+                   CLANG_WARN_UNGUARDED_AVAILABILITY_NEW=NO \
+                   CLANG_WARN_OBJC_AVAILABILITY=NO \
+                   clean build
+
+    # ───────── Stitch CoreKit ─────────
+    - name: Create FBSDKCoreKit.xcframework
+      run: |
+        xcodebuild -create-xcframework \
+          -framework "${BUILD_DIR}/Release-iphoneos/FBSDKCoreKit.framework" \
+          -framework "${BUILD_DIR}/Release-iphonesimulator/FBSDKCoreKit.framework" \
+          -output FBSDKCoreKit.xcframework
+
+        zip -rq "FBSDKCoreKit-${TAG}-patched.zip" FBSDKCoreKit.xcframework
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: FBSDKCoreKit-${{ env.TAG }}-patched
+        path: FBSDKCoreKit-${{ env.TAG }}-patched.zip
+
+  release:
+    needs: corekit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifact from previous job
+        uses: actions/download-artifact@v4
+        with:
+          name: FBSDKCoreKit-${{ env.TAG }}-patched
+          path: .
+
+      - name: Create (or update) GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ env.TAG }}-patched
+          release_name: "FBSDKCoreKit ${{ env.TAG }} (patched)"
+          draft: false
+          prerelease: false
+
+      - name: Upload XCFramework zip to the release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./FBSDKCoreKit-${{ env.TAG }}-patched.zip
+          asset_name: FBSDKCoreKit-${{ env.TAG }}-patched.zip
+          asset_content_type: application/zip        
