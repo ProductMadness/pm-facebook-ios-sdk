@@ -107,6 +107,8 @@ static BOOL fbproxy_AppDelegateContinueUserActivity(id self, SEL _cmd, id applic
         // removing the `proxyEnabled` conditional check here and always running the proxy setup
         // a bug was introduced on the sdk side which caused this condition to always return false
         // and that was not intended. see https://github.com/facebook/facebook-ios-sdk/issues/2205
+        
+        // the removal of the condition here seems to be the least disruptive solution
         [self setupWithProxy];
       } @catch (NSException *exception) {
         // Disable Auto Setup and log event if exception happens
