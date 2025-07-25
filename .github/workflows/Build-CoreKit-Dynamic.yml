@@ -17,7 +17,11 @@ jobs:
       with: { fetch-depth: 1 }
 
     - name: Install XcodeGen
-      run: brew install xcodegen@2.37.0
+      run: |
+        curl -L -o xcodegen.zip https://github.com/yonaskolb/XcodeGen/releases/download/2.37.0/xcodegen.zip
+        unzip xcodegen.zip
+        sudo mv xcodegen /usr/local/bin/
+        chmod +x /usr/local/bin/xcodegen
 
     - run: sudo xcode-select -s /Applications/Xcode_14.3.app
     - run: ./generate-projects.sh --force-with-wrong-xcodegen
